@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "common.h"
+#include <unordered_map>
 
 
 void testOpenImage()
@@ -69,33 +70,94 @@ void testColor2Gray()
 //******************************************* PROJECT ***********************////   
 /////////////////////////////////////////////////////////////////////////////////
 
+
+
+
 int isInside(cv::Point p, int rows, int cols) {
 	if (p.x < rows &&  p.y < cols)
 		return 1;
 	return 0;
 }
 
-Mat drawLinesOnImage( int rows,int cols,std::vector<Vec2f> lines) {
-	Mat_<uchar> dst(rows,cols);
-
-	for (int i = 0; i < rows; i++)
-		for (int j = 0; j < cols; j++)
-			dst(i, j) = 0;
-
-	// Draw the lines on the original image
-	for (auto line : lines) {
-		float rho = line[0];
-		float theta = line[1];
-		double a = cos(theta), b = sin(theta);
-		double x0 = a * rho, y0 = b * rho;
-		cv::Point pt1(cvRound(x0 + 800 * (-b)), cvRound(y0 + 800 * (a)));
-		cv::Point pt2(cvRound(x0 - 800 * (-b)), cvRound(y0 - 800 * (a)));
-
-        cv::line(dst, pt1, pt2,255, 1);
+// deseneaaza liniile dintr un vector de la poitia de inceput la final
+Mat drawLinesOnImageV2(int rows,int cols,std::vector<Vec4i> lines) {
+	Mat_<uchar> dst(rows,cols,255);
+	for (size_t i = 0; i < lines.size(); i++)
+	{
+		line(dst, Point(lines[i][0], lines[i][1]),
+			Point(lines[i][2], lines[i][3]), 0,  1);
 	}
-
 	return dst;
 }
+
+
+Mat drawLinesOnImageV1(int rows, int cols,std::vector<Vec2f> detected_lines)
+{
+	Mat_<uchar> dst(rows, cols, 255);
+
+	for (auto line1 : detected_lines)
+	{
+		float rho = line1[0];
+		float theta = line1[1];
+
+		double a = cos(theta), b = sin(theta);
+		double x0 = a * rho, y0 = b * rho;
+		Point pt1(cvRound(x0 + 1000 * (-b)), cvRound(y0 + 1000 * (a)));
+		Point pt2(cvRound(x0 - 1000 * (-b)), cvRound(y0 - 1000 * (a)));
+
+		line(dst, pt1, pt2, 0, 1);
+	}
+	return dst;
+}
+
+
+void filterLines(std::vector<Vec4i>  inputLines,float threshold)
+{
+
+	std::vector<int> result;
+	std::vector<int> mLines;
+	int mMax, maxCount=0;
+
+	
+	//salvez toate pantele intr-un vector
+	for (auto line1 : inputLines)
+	{
+		int m = (line1[3] - line1[2]) / (line1[1] - line1[0]);	
+		//int count = std::count(mLines.begin(), mLines.end(), m);
+		//if (count == 0)
+		mLines.push_back(m);
+	}
+
+
+	for (auto m : mLines)
+	{
+		
+		int count= std::count(mLines.begin(), mLines.end(), m);
+		if (count > maxCount)
+		{
+			maxCount = count;
+			mMax = m;
+		}
+	}
+
+	
+	for (auto m : mLines)
+		if ((float)abs(m -mMax) <= threshold)
+			result.push_back(m);
+
+
+	for (auto m : mLines)
+		printf("%d ", m);
+	printf("\n");
+	
+	for (auto m : result)
+		printf("%d ",m);
+	printf("\n");
+
+}
+
+
+
 
 void testCanny()
 {
@@ -104,43 +166,37 @@ void testCanny()
 	
 	while (openFileDlg(fname)) {
 		Mat_<uchar> src = imread(fname, IMREAD_GRAYSCALE);
+		Mat_<uchar> dst2Final;
 		
 		 
-		//regiunea de interes ROI   MAI AM NEVOIE DE ROI????????
-
-		int x =  50;  // x  punctul din stanga sus a lui ROI
-		int y =  50;  // y  punctul din stanga sus a lui ROI
-		int width =  150; // latime ROI
-		int height =  100; // inaltime ROI
-
-		Rect roi(x, y, width, height); 
-		Mat roi_img = src(roi);
-
 		//filtru gausian pentru eliminarea zgomotelor
 		Mat blur;
 		GaussianBlur(src, blur, Size(5, 5), 0); //in loc deroi_img i am pus src
 
+		//detectare muchii cu canny
 		Mat edges;
 		Canny(blur, edges, 50, 150 , 3);
 
 
-		// Standard Hough Line Transform
-		std::vector<Vec2f> lines; // liniile selectate
-		HoughLines(edges, lines, 1, CV_PI/4 / 180,100,0, 0); 
+				
+		//salavare linii drepte cu HOUGHLINESP
 
-		//imaginea finala 
-		Mat dst = drawLinesOnImage(src.rows, src.cols, lines);
+		std::vector<Vec4i> lines2; 
+		HoughLinesP(edges, lines2, 1, CV_PI /12 / 180, 80, 40, 80);
+		
+		//rafinez dreptele
+		 filterLines(lines2,1);
+		
+		
+		//desenare linii
+		Mat dst2= drawLinesOnImageV2(src.rows, src.cols, lines2);
 
+	
+		// imagine +resize
+		//resize(dst2, dst2Final, Size(256, 256));
 
-		/*
-		//resize pentru edges (optional)
-		Mat edgesFinal;
-		resize(edges, edgesFinal, Size(256, 256), 0, 0, INTER_LINEAR);
-		*/
-
-		imshow("before", src);
-		imshow("canny", edges);
-		imshow("HoughLines", dst);
+		imshow("Canny", edges);
+		imshow("HoughLinesV2", dst2);
 		waitKey(0);
 	}
 }
