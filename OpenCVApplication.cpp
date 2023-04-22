@@ -139,10 +139,10 @@ std::vector<Vec4i> filterLines(std::vector<Vec4i>  inputLines)
 	for (size_t i = 0; i < mLines.size(); i++) {
 		int cont = 0;
 		for (size_t j = 0; j < mLines.size(); j++)
-		{
-			if (isParallel(mLines[i], mLines[j], 1.6) == 1 && i != j) {
+		{ //0.03
+			if (isParallel(mLines[i], mLines[j], 0.03) == 1 && i != j) {
 				cont++;
-				if (cont == 2) {
+				if (cont == 5) {
 					result.push_back(mLines[i]);
 					break;
 				}
@@ -164,54 +164,13 @@ std::vector<Vec4i> filterLines(std::vector<Vec4i>  inputLines)
 	  // CONSTRUIREA LINIILOR
 	for (auto line1 : inputLines) {
 		float m;
-		if ((line1[1] - line1[0]) == 0)
-			m = 999;
-		else
-			m = 1.0 * (line1[3] - line1[2]) / (line1[1] - line1[0]);
-		if (std::count(result.begin(), result.end(), m) > 0)
-			outputLines.push_back(line1);
-	}
+		if (line1[2] - line1[0] != 0) {
 
-	return outputLines;
-}
+			m = 1.0 * (line1[3] - line1[1]) / (line1[2] - line1[0]);
 
-
-
-std::vector<Vec4i> rangeOfSlopes(std::vector<Vec4i>  inputLines)
-{
-
-	std::vector<float> result;
-	std::vector<float> mLines;
-	std::vector<Vec4i>  outputLines;
-
-
-	//salvez toate pantele intr-un vector
-	for (auto line1 : inputLines)
-	{
-		float m;
-		if (line1[1] - line1[0] == 0)
-			m = 999;
-		else
-			m = 1.0 * (line1[3] - line1[2]) / (line1[1] - line1[0]);
-		mLines.push_back(m);
-	}
-
-
-	for (auto m : mLines) {
-
-		if (abs(m) > 0.2 && abs(m) < 4)
-			result.push_back(m);
-	}
-
-	  // CONSTRUIREA LINIILOR
-	for (auto line1 : inputLines) {
-		float m;
-		if ((line1[1] - line1[0]) == 0)
-			m = 999;
-		else
-			m = 1.0 * (line1[3] - line1[2]) / (line1[1] - line1[0]);
-		if (std::count(result.begin(), result.end(), m) > 0)
-			outputLines.push_back(line1);
+			if (std::count(result.begin(), result.end(), m) > 0)
+				outputLines.push_back(line1);
+		}
 	}
 
 	return outputLines;
@@ -244,7 +203,9 @@ void testCanny()
 
 		//salavare linii drepte cu HOUGHLINESP
 		std::vector<Vec4i> lines2;
-		HoughLinesP(edges, lines2, 1, CV_PI / 20 / 180, 80, 40, 200);
+		//HoughLinesP(edges, lines2, 1, CV_PI / 20 / 180, 80, 40, 200);
+		HoughLinesP(edges, lines2, 1, CV_PI/180/10, 80, 40, 30);
+		
 
 
 		//rafinez dreptele(pastrez doar cele paralele)
@@ -254,13 +215,13 @@ void testCanny()
 		//desenare linii
 		Mat dst2 = drawLinesOnImageV2(src.rows, src.cols, lines2);
 
-		Mat dst3 = drawLinesOnImageV2(src.rows, src.cols, rangeOfSlopes(lines2));
+		Mat dst3 = drawLinesOnImageV2(src.rows, src.cols, filterLines(lines2));
 
 
 
 		//imshow("Canny", edges);
-		imshow("HoughLinesV2", dst2);
-		imshow("HoughLinesV3", dst3);
+		imshow("HoughLines", dst2);
+		imshow("Filtered", dst3);
 
 		//waitKey(0);
 	}
