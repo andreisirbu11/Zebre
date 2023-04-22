@@ -74,24 +74,24 @@ void testColor2Gray()
 
 
 int isInside(cv::Point p, int rows, int cols) {
-	if (p.x < rows &&  p.y < cols)
+	if (p.x < rows && p.y < cols)
 		return 1;
 	return 0;
 }
 
 // deseneaaza liniile dintr un vector de la poitia de inceput la final
-Mat drawLinesOnImageV2(int rows,int cols,std::vector<Vec4i> lines) {
-	Mat_<uchar> dst(rows,cols,255);
+Mat drawLinesOnImageV2(int rows, int cols, std::vector<Vec4i> lines) {
+	Mat_<uchar> dst(rows, cols, 255);
 	for (size_t i = 0; i < lines.size(); i++)
 	{
 		line(dst, Point(lines[i][0], lines[i][1]),
-			Point(lines[i][2], lines[i][3]), 0,  1);
+			Point(lines[i][2], lines[i][3]), 0, 1);
 	}
 	return dst;
 }
 
 
-Mat drawLinesOnImageV1(int rows, int cols,std::vector<Vec2f> detected_lines)
+Mat drawLinesOnImageV1(int rows, int cols, std::vector<Vec2f> detected_lines)
 {
 	Mat_<uchar> dst(rows, cols, 255);
 
@@ -110,52 +110,112 @@ Mat drawLinesOnImageV1(int rows, int cols,std::vector<Vec2f> detected_lines)
 	return dst;
 }
 
+int isParallel(float m1, float m2, float threshold)
+{
+	if (abs(m1 - m2) <= threshold)
+		return 1;
+	return 0;
+}
 
-void filterLines(std::vector<Vec4i>  inputLines,float threshold)
+
+std::vector<Vec4i> filterLines(std::vector<Vec4i>  inputLines)
 {
 
-	std::vector<int> result;
-	std::vector<int> mLines;
-	int mMax, maxCount=0;
+	std::vector<float> result;
+	std::vector<float> mLines;
+	std::vector<Vec4i>  outputLines;
 
-	
+
 	//salvez toate pantele intr-un vector
 	for (auto line1 : inputLines)
 	{
-		int m = (line1[3] - line1[2]) / (line1[1] - line1[0]);	
-		//int count = std::count(mLines.begin(), mLines.end(), m);
-		//if (count == 0)
+		float m;
+		if (line1[2] - line1[0] != 0)
+			m = 1.0 * (line1[3] - line1[1]) / (line1[2] - line1[0]);
 		mLines.push_back(m);
 	}
 
 
-	for (auto m : mLines)
-	{
-		
-		int count= std::count(mLines.begin(), mLines.end(), m);
-		if (count > maxCount)
+	for (size_t i = 0; i < mLines.size(); i++) {
+		int cont = 0;
+		for (size_t j = 0; j < mLines.size(); j++)
 		{
-			maxCount = count;
-			mMax = m;
+			if (isParallel(mLines[i], mLines[j], 1.6) == 1 && i != j) {
+				cont++;
+				if (cont == 2) {
+					result.push_back(mLines[i]);
+					break;
+				}
+			}
 		}
 	}
 
-	
-	for (auto m : mLines)
-		if ((float)abs(m -mMax) <= threshold)
-			result.push_back(m);
+	/*
+	  for (auto m : mLines)
+		  printf("%.3g ", m);
+	  printf("\n");
+
+	  for (auto m : result)
+		  printf("%.3g ", m);
+	  printf("\n");
+	  */
 
 
-	for (auto m : mLines)
-		printf("%d ", m);
-	printf("\n");
-	
-	for (auto m : result)
-		printf("%d ",m);
-	printf("\n");
+	  // CONSTRUIREA LINIILOR
+	for (auto line1 : inputLines) {
+		float m;
+		if ((line1[1] - line1[0]) == 0)
+			m = 999;
+		else
+			m = 1.0 * (line1[3] - line1[2]) / (line1[1] - line1[0]);
+		if (std::count(result.begin(), result.end(), m) > 0)
+			outputLines.push_back(line1);
+	}
 
+	return outputLines;
 }
 
+
+
+std::vector<Vec4i> rangeOfSlopes(std::vector<Vec4i>  inputLines)
+{
+
+	std::vector<float> result;
+	std::vector<float> mLines;
+	std::vector<Vec4i>  outputLines;
+
+
+	//salvez toate pantele intr-un vector
+	for (auto line1 : inputLines)
+	{
+		float m;
+		if (line1[1] - line1[0] == 0)
+			m = 999;
+		else
+			m = 1.0 * (line1[3] - line1[2]) / (line1[1] - line1[0]);
+		mLines.push_back(m);
+	}
+
+
+	for (auto m : mLines) {
+
+		if (abs(m) > 0.2 && abs(m) < 4)
+			result.push_back(m);
+	}
+
+	  // CONSTRUIREA LINIILOR
+	for (auto line1 : inputLines) {
+		float m;
+		if ((line1[1] - line1[0]) == 0)
+			m = 999;
+		else
+			m = 1.0 * (line1[3] - line1[2]) / (line1[1] - line1[0]);
+		if (std::count(result.begin(), result.end(), m) > 0)
+			outputLines.push_back(line1);
+	}
+
+	return outputLines;
+}
 
 
 
@@ -163,41 +223,46 @@ void testCanny()
 {
 
 	char fname[MAX_PATH];
-	
+
 	while (openFileDlg(fname)) {
 		Mat_<uchar> src = imread(fname, IMREAD_GRAYSCALE);
 		Mat_<uchar> dst2Final;
-		
-		 
+
+
+		resize(src, src, Size(256, 256));
+
 		//filtru gausian pentru eliminarea zgomotelor
 		Mat blur;
 		GaussianBlur(src, blur, Size(5, 5), 0); //in loc deroi_img i am pus src
 
+
 		//detectare muchii cu canny
 		Mat edges;
-		Canny(blur, edges, 50, 150 , 3);
+		Canny(blur, edges, 50, 150, 3);
 
 
-				
+
 		//salavare linii drepte cu HOUGHLINESP
+		std::vector<Vec4i> lines2;
+		HoughLinesP(edges, lines2, 1, CV_PI / 20 / 180, 80, 40, 200);
 
-		std::vector<Vec4i> lines2; 
-		HoughLinesP(edges, lines2, 1, CV_PI /12 / 180, 80, 40, 80);
-		
-		//rafinez dreptele
-		 filterLines(lines2,1);
-		
-		
+
+		//rafinez dreptele(pastrez doar cele paralele)
+		// filterLines(lines2);
+
+
 		//desenare linii
-		Mat dst2= drawLinesOnImageV2(src.rows, src.cols, lines2);
+		Mat dst2 = drawLinesOnImageV2(src.rows, src.cols, lines2);
 
-	
-		// imagine +resize
-		//resize(dst2, dst2Final, Size(256, 256));
+		Mat dst3 = drawLinesOnImageV2(src.rows, src.cols, rangeOfSlopes(lines2));
 
-		imshow("Canny", edges);
+
+
+		//imshow("Canny", edges);
 		imshow("HoughLinesV2", dst2);
-		waitKey(0);
+		imshow("HoughLinesV3", dst3);
+
+		//waitKey(0);
 	}
 }
 
@@ -232,6 +297,8 @@ int main()
 		case 4:
 			testCanny();
 			break;
+
+
 
 		}
 	} while (op != 0);
