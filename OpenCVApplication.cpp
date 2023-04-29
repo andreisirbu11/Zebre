@@ -67,10 +67,8 @@ void testColor2Gray()
 
 
 /////////////////////////////////////////////////////////////////////////////////
-//******************************************* PROJECT ***********************////   
+////***************************** PROJECT ***********************************////   
 /////////////////////////////////////////////////////////////////////////////////
-
-
 
 
 int isInside(cv::Point p, int rows, int cols) {
@@ -79,7 +77,28 @@ int isInside(cv::Point p, int rows, int cols) {
 	return 0;
 }
 
-// deseneaaza liniile dintr un vector de la poitia de inceput la final
+//TODO
+//pasul1: gasesc prima linie(cea mai de sus)
+//pasul 2: imi aleg latimea dintre linii
+//pasul 3:cobor cu acea latime si generez restul dreptelor cu un for(cate drepte in total??)
+//x1,y1,x2,y2  dreapta de start 
+// se genereaza de sus in jos
+//modelul se poate modifica din parametru
+std::vector<Vec4i> generateIdealModel(int x1,int y1,int x2,int y2, int width,int nrDrepte)
+{
+	std::vector<Vec4i> crosswalk_lines;
+	crosswalk_lines.push_back(Vec4i(x1,y1,x2,y2));
+
+	for(int i=1;i<=nrDrepte;i++){
+	   int currentWidth = i * width;
+	   crosswalk_lines.push_back(Vec4i(x1, y1 + currentWidth, x2, y2 + currentWidth));
+	}
+	
+	printf("\n size:  %d \n",crosswalk_lines.size());
+	return crosswalk_lines;
+}
+
+
 Mat drawLinesOnImageV2(int rows, int cols, std::vector<Vec4i> lines) {
 	Mat_<uchar> dst(rows, cols, 255);
 	for (size_t i = 0; i < lines.size(); i++)
@@ -90,25 +109,6 @@ Mat drawLinesOnImageV2(int rows, int cols, std::vector<Vec4i> lines) {
 	return dst;
 }
 
-
-Mat drawLinesOnImageV1(int rows, int cols, std::vector<Vec2f> detected_lines)
-{
-	Mat_<uchar> dst(rows, cols, 255);
-
-	for (auto line1 : detected_lines)
-	{
-		float rho = line1[0];
-		float theta = line1[1];
-
-		double a = cos(theta), b = sin(theta);
-		double x0 = a * rho, y0 = b * rho;
-		Point pt1(cvRound(x0 + 1000 * (-b)), cvRound(y0 + 1000 * (a)));
-		Point pt2(cvRound(x0 - 1000 * (-b)), cvRound(y0 - 1000 * (a)));
-
-		line(dst, pt1, pt2, 0, 1);
-	}
-	return dst;
-}
 
 int isParallel(float m1, float m2, float threshold)
 {
@@ -135,7 +135,7 @@ std::vector<Vec4i> filterLines(std::vector<Vec4i>  inputLines)
 		mLines.push_back(m);
 	}
 
-
+	
 	for (size_t i = 0; i < mLines.size(); i++) {
 		int cont = 0;
 		for (size_t j = 0; j < mLines.size(); j++)
@@ -175,7 +175,6 @@ std::vector<Vec4i> filterLines(std::vector<Vec4i>  inputLines)
 
 	return outputLines;
 }
-
 
 
 void testCanny()
@@ -218,8 +217,8 @@ void testCanny()
 		Mat dst3 = drawLinesOnImageV2(src.rows, src.cols, filterLines(lines2));
 
 
-
-		//imshow("Canny", edges);
+		imshow("Canny", edges);
+		imshow("Initial", src);
 		imshow("HoughLines", dst2);
 		imshow("Filtered", dst3);
 
@@ -227,6 +226,16 @@ void testCanny()
 	}
 }
 
+void testIdealModel() {
+
+	////////////////////////////////////////////  x1 y1  x2 y2 wd len 
+	std::vector<Vec4i> lines = generateIdealModel(20,20,230,20,20,10);
+	Mat dst = drawLinesOnImageV2(256, 256, lines);
+
+	imshow("ideal model", dst);
+
+	waitKey(0);
+}
 
 int main()
 {
@@ -241,6 +250,7 @@ int main()
 		printf(" 3 - Color to Gray\n");
 		printf("\n PROIECT \n");
 		printf(" 4 - Canny test\n");
+		printf(" 5 - Ideal Model test\n");
 		printf(" 0 - Exit\n\n");
 		printf("Option: ");
 		scanf("%d", &op);
@@ -257,6 +267,9 @@ int main()
 			break;
 		case 4:
 			testCanny();
+			break;
+		case 5:
+			testIdealModel();
 			break;
 
 
