@@ -67,7 +67,7 @@ void testColor2Gray()
 
 
 /////////////////////////////////////////////////////////////////////////////////
-////***************************** PROJECT ***********************************////   
+////***************************** PROJECT *********************************//////   
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -77,7 +77,7 @@ int isInside(cv::Point p, int rows, int cols) {
 	return 0;
 }
 
-//TODO
+
 //pasul1: gasesc prima linie(cea mai de sus)
 //pasul 2: imi aleg latimea dintre linii
 //pasul 3:cobor cu acea latime si generez restul dreptelor cu un for(cate drepte in total??)
@@ -94,10 +94,62 @@ std::vector<Vec4i> generateIdealModel(int x1,int y1,int x2,int y2, int width,int
 	   crosswalk_lines.push_back(Vec4i(x1, y1 + currentWidth, x2, y2 + currentWidth));
 	}
 	
-	printf("\n size:  %d \n",crosswalk_lines.size());
+	//printf("\n size:  %d \n",crosswalk_lines.size());
 	return crosswalk_lines;
 }
 
+// getAffineTransform are nevoie de 2 vectori de 3 puncte fiecare
+// punctele le obtin din vectorii dreptelor std::vector<Vec4i>(pentru test aleg primele 3 puncte) 
+Mat generateAffineTransformation(std::vector<Vec4i> idealModel, std::vector<Vec4i> zebraLines)
+{
+
+	Point2f srcTri[3];
+	srcTri[0] = Point2f(idealModel[0][0]*1.0,idealModel[0][1] * 1.0);
+	srcTri[1] = Point2f(idealModel[0][2] * 1.0, idealModel[0][3] * 1.0);
+	srcTri[2] = Point2f(idealModel[1][0] * 1.0, idealModel[1][1] * 1.0);
+
+	Point2f dstTri[3];
+	dstTri[0] = Point2f(zebraLines[0][0] * 1.0, zebraLines[0][1] * 1.0);
+	dstTri[1] = Point2f(zebraLines[0][2] * 1.0, zebraLines[0][3] * 1.0);
+	dstTri[2] = Point2f(zebraLines[1][0] * 1.0, zebraLines[1][1] * 1.0);
+
+	return getAffineTransform(srcTri, dstTri);
+}
+
+//poate are acuratete mai mare cu generatePerspective???
+//getPerspectiveTransform are nevoie de 2 vectori de 4 puncte fiecare
+// punctele le obtin din vectorii dreptelor std::vector<Vec4i>(pentru test aleg primele 3 puncte) 
+Mat generatePerspectiveTransformation(std::vector<Vec4i> idealModel, std::vector<Vec4i> zebraLines)
+{
+	if (zebraLines.size() < 1)
+		return cv::Mat::zeros(256, 256, CV_8UC1);
+	Point2f srcTri[4];
+	srcTri[0] = Point2f(idealModel[0][0] * 1.0, idealModel[0][1] * 1.0);
+	srcTri[1] = Point2f(idealModel[0][2] * 1.0, idealModel[0][3] * 1.0);
+	srcTri[2] = Point2f(idealModel[1][0] * 1.0, idealModel[1][1] * 1.0);
+	srcTri[3] = Point2f(idealModel[1][2] * 1.0, idealModel[1][3] * 1.0);
+
+	Point2f dstTri[4];
+	dstTri[0] = Point2f(zebraLines[0][0] * 1.0, zebraLines[0][1] * 1.0);
+	dstTri[1] = Point2f(zebraLines[0][2] * 1.0, zebraLines[0][3] * 1.0);
+	dstTri[2] = Point2f(zebraLines[1][0] * 1.0, zebraLines[1][1] * 1.0);
+	dstTri[3] = Point2f(zebraLines[1][2] * 1.0, zebraLines[1][3] * 1.0);
+
+	return getPerspectiveTransform(srcTri, dstTri);
+}
+
+
+
+void printTransformationMatrix(Mat warp_mat)
+{
+	for (int i = 0; i < warp_mat.rows; i++)
+	{
+		for (int j = 0; j < warp_mat.cols; j++)
+			printf("%.6f ", warp_mat.at<double>(i, j));
+		printf("\n");
+	}
+	printf("\n");
+}
 
 Mat drawLinesOnImageV2(int rows, int cols, std::vector<Vec4i> lines) {
 	Mat_<uchar> dst(rows, cols, 255);
@@ -184,9 +236,7 @@ void testCanny()
 
 	while (openFileDlg(fname)) {
 		Mat_<uchar> src = imread(fname, IMREAD_GRAYSCALE);
-		Mat_<uchar> dst2Final;
-
-
+	
 		resize(src, src, Size(256, 256));
 
 		//filtru gausian pentru eliminarea zgomotelor
@@ -208,16 +258,33 @@ void testCanny()
 
 
 		//rafinez dreptele(pastrez doar cele paralele)
-		// filterLines(lines2);
+		std::vector<Vec4i> filteredLines= filterLines(lines2);
 
+		
 
-		//desenare linii
+		//generare matrice de linii
 		Mat dst2 = drawLinesOnImageV2(src.rows, src.cols, lines2);
 
-		Mat dst3 = drawLinesOnImageV2(src.rows, src.cols, filterLines(lines2));
+		Mat dst3 = drawLinesOnImageV2(src.rows, src.cols, filteredLines);
+
+		//testare transformata afina
+		std::vector<Vec4i> idealModel = generateIdealModel(20, 20, 230, 20, 20, 10);
+		Mat dst4 = drawLinesOnImageV2(src.rows, src.cols, idealModel);
+
+		Mat warp_mat = generatePerspectiveTransformation(idealModel, filteredLines);
+
+		//afisez matricea  transformatei afine
+
+		printTransformationMatrix(warp_mat);
+
+		//aplicarea transformatei pe imaginea sursa
+		Mat warp_dst = Mat::zeros(src.rows, src.cols, src.type());
+		
+		warpPerspective(dst4, warp_dst, warp_mat, warp_dst.size());
 
 
-		imshow("Canny", edges);
+		//imshow("Canny", edges);
+		imshow("Affine", warp_dst);
 		imshow("Initial", src);
 		imshow("HoughLines", dst2);
 		imshow("Filtered", dst3);
@@ -236,6 +303,8 @@ void testIdealModel() {
 
 	waitKey(0);
 }
+
+
 
 int main()
 {
