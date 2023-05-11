@@ -77,6 +77,33 @@ int isInside(cv::Point p, int rows, int cols) {
 	return 0;
 }
 
+//calculeaza media noantelor de gri
+int computeMean(Mat_<uchar> src)
+{
+	int s = 0;
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 0; j < src.cols; j++)
+			s += src(i, j);
+	return s / (src.rows * src.cols);
+
+}
+
+//converteste din gray-scale in albnegru
+Mat convertoBinary(Mat_<uchar> src) {
+
+	Mat_<uchar> dst(src.cols,src.rows);
+
+	int threshold = computeMean(src);
+    
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 0; j < src.cols; j++)
+			if (src(i, j) <= threshold)
+				dst(i, j) = 0;
+			else
+				dst(i, j) = 255;
+	return dst;
+
+}
 
 //pasul1: gasesc prima linie(cea mai de sus)
 //pasul 2: imi aleg latimea dintre linii
@@ -143,14 +170,51 @@ Mat generatePerspectiveTransformation(std::vector<Vec4i> idealModel, std::vector
 	srcTri[3] = Point2f(idealModel[1][2] * 1.0, idealModel[1][3] * 1.0);
 
 	Point2f dstTri[4];
-	dstTri[0] = Point2f(zebraLines[0][0] * 1.0, zebraLines[0][1] * 1.0);
-	dstTri[1] = Point2f(zebraLines[0][2] * 1.0, zebraLines[0][3] * 1.0);
-	dstTri[2] = Point2f(zebraLines[1][0] * 1.0, zebraLines[1][1] * 1.0);
-	dstTri[3] = Point2f(zebraLines[1][2] * 1.0, zebraLines[1][3] * 1.0);
+	dstTri[0] = Point2f(zebraLines[1][0] * 1.0, zebraLines[1][1] * 1.0);
+	dstTri[1] = Point2f(zebraLines[1][2] * 1.0, zebraLines[1][3] * 1.0);
+	dstTri[2] = Point2f(zebraLines[2][0] * 1.0, zebraLines[2][1] * 1.0);
+	dstTri[3] = Point2f(zebraLines[2][2] * 1.0, zebraLines[2][3] * 1.0);
 
 	return getPerspectiveTransform(srcTri, dstTri);
 }
 
+
+int countWhites(Mat_<uchar> whiteMask)
+{
+	int count = 0;
+	for (int i = 0; i < whiteMask.rows; i++)
+		for (int j = 0; j < whiteMask.cols; j++)
+			if (whiteMask(i, j) == 255)
+				count++;
+	return count;
+}
+
+
+// RMSE
+int generateRMSE(Mat_<uchar> src1,Mat_<uchar> whiteMask,Mat_<uchar> zebraProjected)
+{
+
+	int rows = src1.rows;
+	int cols = src1.cols;
+	int sum = 0;
+
+	//trebuie sa modific count??
+	int count = rows*cols;
+	//int count = countWhites(whiteMask);
+
+	for(int i=0;i<src1.rows;i++)
+		for (int j = 0; j < src1.cols; j++) {
+			//calculez doar pentru cele din masca
+			if (whiteMask(i, j) == 255) {
+				
+				int pixelDiff = src1.at<uchar>(i, j) - zebraProjected(i, j);
+				sum += pixelDiff * pixelDiff;
+			}
+		}
+	
+	return  sum/count;
+
+}
 
 
 void printTransformationMatrix(Mat warp_mat)
@@ -242,7 +306,68 @@ std::vector<Vec4i> filterLines(std::vector<Vec4i>  inputLines)
 }
 
 
-void testCanny()
+Mat RANSAC1(Mat_<uchar> src, std::vector<Vec4i> filteredLines, std::vector<Vec4i> idealModel) {
+	Point2f dstTri[4];
+	Point2f srcTri[4];
+	int m ,n;//dreptele din filteredLines
+	int size = filteredLines.size();
+	int best_rmse = 999999;
+	Mat best_matrix;
+
+	//masca de alb
+	Mat white_mask = Mat::ones(src.rows, src.cols, src.type());
+
+	//imagine full alb
+	Mat white = Mat::ones(src.rows, src.cols, src.type()) * 255;
+
+	//zebra proiectata
+	Mat warp_dst = Mat::ones(src.rows, src.cols, src.type());
+
+	//generez modelul ideal
+	Mat idealModelDrawed = drawIdealModel(src.rows, src.cols, idealModel);
+
+	//primele doua drepte din modelul ideal
+	srcTri[0] = Point2f(idealModel[0][0] * 1.0, idealModel[0][1] * 1.0);
+	srcTri[1] = Point2f(idealModel[0][2] * 1.0, idealModel[0][3] * 1.0);
+	srcTri[2] = Point2f(idealModel[1][0] * 1.0, idealModel[1][1] * 1.0);
+	srcTri[3] = Point2f(idealModel[1][2] * 1.0, idealModel[1][3] * 1.0);
+
+	for(m=0; m< size ;m++)
+		for (n = 0; n < size; n++) 
+			if (m != n  ) {
+				//asocierile pentru liniile detectate
+				dstTri[0] = Point2f(filteredLines[m][0] * 1.0, filteredLines[m][1] * 1.0);
+				dstTri[1] = Point2f(filteredLines[m][2] * 1.0, filteredLines[m][3] * 1.0);
+				dstTri[2] = Point2f(filteredLines[n][0] * 1.0, filteredLines[n][1] * 1.0);
+				dstTri[3] = Point2f(filteredLines[n][2] * 1.0, filteredLines[n][3] * 1.0);
+
+				//generez o matrice perspectiva
+				Mat currenMatrix= getPerspectiveTransform(srcTri, dstTri);
+
+				//generez masca alba proiectata
+				warpPerspective(white, white_mask, currenMatrix, warp_dst.size());
+
+				//generez zebra proiectata
+				warpPerspective(idealModelDrawed, warp_dst, currenMatrix, warp_dst.size());
+
+				int currentRMSE= generateRMSE(src, white_mask, warp_dst);
+				
+				
+
+				printf("RMSE %d\n", currentRMSE);
+				if (currentRMSE <best_rmse  ) {
+					best_rmse = currentRMSE;
+					best_matrix = currenMatrix;
+					
+				}
+
+			}
+	
+	return best_matrix;
+}
+
+
+void testZebre()
 {
 
 	char fname[MAX_PATH];
@@ -286,12 +411,12 @@ void testCanny()
 		std::vector<Vec4i> idealModel = generateIdealModel(0, 4, 255, 4, 35, 8);
 
 		Mat idealModelDrawed = drawIdealModel(src.rows,src.cols,idealModel);
-
-		Mat warp_matrix = generatePerspectiveTransformation(idealModel, filteredLines);
+		
+		Mat warp_matrix = RANSAC1(src, filteredLines, idealModel); //generatePerspectiveTransformation(idealModel, filteredLines);
 
 
 		//afisez matricea  transformatei afine
-		printTransformationMatrix(warp_matrix);
+		//printTransformationMatrix(warp_matrix);
 
 
 		//zebra proiectata
@@ -306,16 +431,24 @@ void testCanny()
 		warpPerspective(idealModelDrawed, warp_dst, warp_matrix, warp_dst.size());
 		warpPerspective(white, white_mask, warp_matrix, warp_dst.size());
 		
+		//afisez un rmse fara ransac
+		//int rmse = generateRMSE(src, white_mask, warp_dst);
+		//printf("RMSE %d \n", rmse); 
+
+
+
 		//imshow("Canny", edges);
 		imshow("WhiteMask", white_mask); 
 		imshow("Perspective", warp_dst); 
 		imshow("Initial", src);
-		imshow("HoughLines", dst2);
+		
+		//imshow("HoughLines", dst2);
 		imshow("Filtered", dst3);
-
 		//waitKey(0);
 	}
 }
+
+
 
 void testIdealModel() {
 
@@ -361,7 +494,7 @@ int main()
 			testColor2Gray();
 			break;
 		case 4:
-			testCanny();
+			testZebre();
 			break;
 		case 5:
 			testIdealModel();
