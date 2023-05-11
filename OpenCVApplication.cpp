@@ -89,7 +89,7 @@ std::vector<Vec4i> generateIdealModel(int x1,int y1,int x2,int y2, int width,int
 	std::vector<Vec4i> crosswalk_lines;
 	crosswalk_lines.push_back(Vec4i(x1,y1,x2,y2));
 
-	for(int i=1;i<=nrDrepte;i++){
+	for(int i=1;i<nrDrepte;i++){
 	   int currentWidth = i * width;
 	   crosswalk_lines.push_back(Vec4i(x1, y1 + currentWidth, x2, y2 + currentWidth));
 	}
@@ -98,31 +98,44 @@ std::vector<Vec4i> generateIdealModel(int x1,int y1,int x2,int y2, int width,int
 	return crosswalk_lines;
 }
 
-// getAffineTransform are nevoie de 2 vectori de 3 puncte fiecare
-// punctele le obtin din vectorii dreptelor std::vector<Vec4i>(pentru test aleg primele 3 puncte) 
-Mat generateAffineTransformation(std::vector<Vec4i> idealModel, std::vector<Vec4i> zebraLines)
+//deseneaza modelul ideal de zebra alb-negru
+Mat drawIdealModel(int rows,int cols,std::vector<Vec4i> crosswalk_lines)
 {
+	int border2=0,border1 = 0;
+	int curr = 0;
+	Mat_<uchar> dst = Mat::ones(rows,cols, CV_8UC1) * 255; 
 
-	Point2f srcTri[3];
-	srcTri[0] = Point2f(idealModel[0][0]*1.0,idealModel[0][1] * 1.0);
-	srcTri[1] = Point2f(idealModel[0][2] * 1.0, idealModel[0][3] * 1.0);
-	srcTri[2] = Point2f(idealModel[1][0] * 1.0, idealModel[1][1] * 1.0);
+	for (auto line1 : crosswalk_lines) {
+		border2 = line1[1]; //un y
+		for (int i = border1; i < border2; i++)
+			for (int j = 0; j < cols; j++)
+				if (curr % 2 == 0)
+					dst(i, j) = 0;
+				
+		border1 = border2;
+		curr++;
 
-	Point2f dstTri[3];
-	dstTri[0] = Point2f(zebraLines[0][0] * 1.0, zebraLines[0][1] * 1.0);
-	dstTri[1] = Point2f(zebraLines[0][2] * 1.0, zebraLines[0][3] * 1.0);
-	dstTri[2] = Point2f(zebraLines[1][0] * 1.0, zebraLines[1][1] * 1.0);
+	}
 
-	return getAffineTransform(srcTri, dstTri);
+	for (int i = border2; i < rows; i++)
+		for (int j = 0; j < cols; j++)
+				dst(i, j) = 0;
+
+	
+	return dst;
 }
+
 
 //poate are acuratete mai mare cu generatePerspective???
 //getPerspectiveTransform are nevoie de 2 vectori de 4 puncte fiecare
 // punctele le obtin din vectorii dreptelor std::vector<Vec4i>(pentru test aleg primele 3 puncte) 
 Mat generatePerspectiveTransformation(std::vector<Vec4i> idealModel, std::vector<Vec4i> zebraLines)
 {
-	if (zebraLines.size() < 1)
+	int zebraLen = zebraLines.size();
+	int idealLen = zebraLines.size();
+	if (zebraLen < 1)
 		return cv::Mat::zeros(256, 256, CV_8UC1);
+	
 	Point2f srcTri[4];
 	srcTri[0] = Point2f(idealModel[0][0] * 1.0, idealModel[0][1] * 1.0);
 	srcTri[1] = Point2f(idealModel[0][2] * 1.0, idealModel[0][3] * 1.0);
@@ -239,6 +252,7 @@ void testCanny()
 	
 		resize(src, src, Size(256, 256));
 
+		
 		//filtru gausian pentru eliminarea zgomotelor
 		Mat blur;
 		GaussianBlur(src, blur, Size(5, 5), 0); //in loc deroi_img i am pus src
@@ -261,30 +275,40 @@ void testCanny()
 		std::vector<Vec4i> filteredLines= filterLines(lines2);
 
 		
-
 		//generare matrice de linii
 		Mat dst2 = drawLinesOnImageV2(src.rows, src.cols, lines2);
 
 		Mat dst3 = drawLinesOnImageV2(src.rows, src.cols, filteredLines);
 
-		//testare transformata afina
-		std::vector<Vec4i> idealModel = generateIdealModel(20, 20, 230, 20, 20, 10);
-		Mat dst4 = drawLinesOnImageV2(src.rows, src.cols, idealModel);
 
-		Mat warp_mat = generatePerspectiveTransformation(idealModel, filteredLines);
+		//testare transformata perspectiva
+		////////////////////////////////////////////       x1 y1  x2  y2  wd nrDrepte 
+		std::vector<Vec4i> idealModel = generateIdealModel(0, 4, 255, 4, 35, 8);
+
+		Mat idealModelDrawed = drawIdealModel(src.rows,src.cols,idealModel);
+
+		Mat warp_matrix = generatePerspectiveTransformation(idealModel, filteredLines);
+
 
 		//afisez matricea  transformatei afine
+		printTransformationMatrix(warp_matrix);
 
-		printTransformationMatrix(warp_mat);
 
-		//aplicarea transformatei pe imaginea sursa
-		Mat warp_dst = Mat::zeros(src.rows, src.cols, src.type());
+		//zebra proiectata
+		Mat warp_dst = Mat::ones(src.rows, src.cols, src.type());
+
+		//masca de alb
+		Mat white_mask = Mat::ones(src.rows, src.cols, src.type());
+
+		//imagine full alb
+		Mat white = Mat::ones(src.rows, src.cols, src.type())*255 ;
+
+		warpPerspective(idealModelDrawed, warp_dst, warp_matrix, warp_dst.size());
+		warpPerspective(white, white_mask, warp_matrix, warp_dst.size());
 		
-		warpPerspective(dst4, warp_dst, warp_mat, warp_dst.size());
-
-
 		//imshow("Canny", edges);
-		imshow("Affine", warp_dst);
+		imshow("WhiteMask", white_mask); 
+		imshow("Perspective", warp_dst); 
 		imshow("Initial", src);
 		imshow("HoughLines", dst2);
 		imshow("Filtered", dst3);
@@ -296,10 +320,12 @@ void testCanny()
 void testIdealModel() {
 
 	////////////////////////////////////////////  x1 y1  x2 y2 wd len 
-	std::vector<Vec4i> lines = generateIdealModel(20,20,230,20,20,10);
+	std::vector<Vec4i> lines = generateIdealModel(0,4,255,4,35,8);
 	Mat dst = drawLinesOnImageV2(256, 256, lines);
+	Mat dst2 = drawIdealModel(256, 256, lines);
 
 	imshow("ideal model", dst);
+	imshow("ideal model drawed", dst2);
 
 	waitKey(0);
 }
@@ -318,7 +344,7 @@ int main()
 		printf(" 2 - Open BMP images from folder\n");
 		printf(" 3 - Color to Gray\n");
 		printf("\n PROIECT \n");
-		printf(" 4 - Canny test\n");
+		printf(" 4 - Zebre\n");
 		printf(" 5 - Ideal Model test\n");
 		printf(" 0 - Exit\n\n");
 		printf("Option: ");
@@ -340,6 +366,7 @@ int main()
 		case 5:
 			testIdealModel();
 			break;
+	
 
 
 
