@@ -178,19 +178,41 @@ Mat generatePerspectiveTransformation(std::vector<Vec4i> idealModel, std::vector
 	return getPerspectiveTransform(srcTri, dstTri);
 }
 
-//calculeaza diferenta de negru-alb a zebrei proiectate
-int countBlackWhites(Mat_<uchar> whiteMask, Mat_<uchar> zebraProjected)
+//calculeaza diferenta de negru-alb a zebrei proiectate (ca numar de stripe-uri) 
+int countBlackWhites(Mat_<uchar> zebraProjected)
 {
-	int countWhite = 0;
-	int countBlack = 0;
-	for (int i = 0; i < whiteMask.rows; i++)
-		for (int j = 0; j < whiteMask.cols; j++)
-			if (whiteMask(i, j) == 255)
-				if (zebraProjected(i, j) == 0)
-					countBlack++;
-				else
-					countWhite++;
-	return countBlack-countWhite;
+	int area = 0,ci=0,ri=0;
+	int nrStripes = 0;
+	//area
+	int rows = zebraProjected.rows;
+	int cols = zebraProjected.cols;
+	for (int i = 0; i < rows; i++)
+		for (int j = 0; j < cols; j++)
+			if (zebraProjected(i, j) == 255)
+				area++;
+
+	for (int i = 0; i < zebraProjected.rows; i++)
+		for (int j = 0; j < zebraProjected.cols; j++)
+		{
+			if (zebraProjected(i, j) == 255) {
+				ci += j;
+				ri += i;
+			}
+			   
+		}
+	ri /= area;
+
+	ci /= area;
+	int intra = 0;
+	for (int y = 1; y < rows; y++)
+		if (zebraProjected(ci, y) == 255 && zebraProjected(ci, y-1) == 0)
+			if (intra == 0){
+				nrStripes++;
+				intra = 1;
+			}
+			else { intra = 0; }
+				
+	return nrStripes;
 }
 
 //calculeaza aria mastii albe
@@ -484,8 +506,8 @@ void testZebre()
 		//afisez un rmse fara ransac
 		//int rmse = generateRMSE(src, white_mask, warp_dst);
 		//printf("RMSE %d \n", rmse); 
-
-
+		printf(" STRIPES %d \n", countBlackWhites( warp_dst));
+		
 
 		//imshow("Canny", edges);
 		imshow("WhiteMask", white_mask);
